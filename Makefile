@@ -1,5 +1,5 @@
-CC = gcc-7
-CFLAGS += -Wall -Wpedantic -Werror -g
+CC = gcc-mp-7
+CFLAGS += -Wall -Wpedantic -Werror -g -lncurses
 
 SRCDIR = src
 BUILDDIR = build
@@ -15,12 +15,7 @@ INC = -I include
 $(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
 	@echo " Linking..."
-	@echo " $(CC) -o $(BINDIR)/$(TARGET) $(OBJECTS)"; $(CC) -o $(BINDIR)/$(TARGET) $(OBJECTS)
-
-$(BINDIR)/%: $(BUILDDIR)/%.o
-	@mkdir -p $(BINDIR)
-	@echo " Linking..."
-	@echo " $(CC) -o $@ $<"; $(CC) $(CFLAGS) -o $@ $<
+	@echo " $(CC) $(CFLAGS) -o $(BINDIR)/$(TARGET) $(OBJECTS)"; $(CC) $(CFLAGS) -o $(BINDIR)/$(TARGET) $(OBJECTS)
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.$(SRCEXT)
 	@mkdir -p $(BUILDDIR)
