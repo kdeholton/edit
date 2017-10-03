@@ -1,4 +1,4 @@
-CC = gcc-mp-7
+CC = gcc-7
 CFLAGS += -Wall -Wpedantic -Werror -g -lncurses
 
 SRCDIR = src

@@ -7,6 +7,8 @@ static span_t *head_sentinel;
 static span_t *tail_sentinel;
 static uint8_t cursor_x;
 static uint8_t cursor_y;
+EditorMode mode;
+static uint32_t top_line;
 
 void printUsage() {
   printf("Usage: edit <filename>\n");
@@ -75,16 +77,28 @@ ErrorCode ncurses_init() {
   cursor_x = 0;
   cursor_y = 0;
 
+  mode = command_mode;
+  top_line = 0;
+
   return k_ok;
 }
 
 ErrorCode scroll_up() {
   // TODO
+  if (top_line == 0) {
+    return k_ok;
+  }
+  scrollok(stdscr, true); // Enable scrolling
+  scrl(-1);
+  top_line--;
   return k_ok;
 }
 
 ErrorCode scroll_down() {
   // TODO
+  scrollok(stdscr, true); // Enable scrolling
+  scrl(1);
+  top_line++;
   return k_ok;
 }
 
@@ -94,7 +108,7 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
       cursor_x -= 1;
     }
   } else if (x == 1) {
-    if (cursor_x < COLS) {
+    if (cursor_x < COLS-1) {
       cursor_x += 1;
     }
   }
@@ -102,31 +116,50 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
   if (y == -1) {
     if (cursor_y > 0) {
       cursor_y -= 1;
+    } else if (cursor_y == 0) {
+      scroll_up();
     }
   } else if (y == 1) {
-    if (cursor_y < LINES) {
+    if (cursor_y < LINES-1) {
       cursor_y += 1;
+    } else if (cursor_y == LINES-1) {
+      scroll_down();
     }
   }
 
   return k_ok;
 }
 
+ErrorCode enter_insert_mode() {
+  mode = insert_mode;
+  return k_ok;
+}
+
 ErrorCode ncurses_process_input() {
   move(cursor_y, cursor_x);
-  char c = '\0';
+  wchar_t c = '\0';
   while (c != 'q') {
     c = getch();
+    if (mode == insert_mode) {
+      // TODO Type characters into buffer
+      continue;
+    }
     switch(c) {
+      case 'i': // Enter insert mode
+        enter_insert_mode();
+      case KEY_LEFT:
       case 'h': // Left
         update_cursor(-1, 0);
         break;
+      case KEY_RIGHT:
       case 'l': // Right
         update_cursor(1, 0);
         break;
+      case KEY_UP:
       case 'k': // Up
         update_cursor(0, -1);
         break;
+      case KEY_DOWN:
       case 'j': // Down
         update_cursor(0, 1);
         break;
