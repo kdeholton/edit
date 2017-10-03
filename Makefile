@@ -5,13 +5,17 @@ SRCDIR = src
 BUILDDIR = build
 BINDIR = bin
 
+TARGET := edit
 SRCEXT = c
 SOURCES := $(shell find  $(SRCDIR) -type f -name *.$(SRCEXT))
 OBJECTS := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.o))
 TARGETS := $(patsubst $(BUILDDIR)/%,$(BINDIR)/%,$(OBJECTS:.o=))
 INC = -I include
 
-default: $(TARGETS)
+$(TARGET): $(OBJECTS)
+	@mkdir -p $(BINDIR)
+	@echo " Linking..."
+	@echo " $(CC) -o $(BINDIR)/$(TARGET) $(OBJECTS)"; $(CC) -o $(BINDIR)/$(TARGET) $(OBJECTS)
 
 $(BINDIR)/%: $(BUILDDIR)/%.o
 	@mkdir -p $(BINDIR)
