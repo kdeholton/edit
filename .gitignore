@@ -5,3 +5,6 @@ lib/*
 bin/*
 
 .DS_Store
+
+# Temp vim files
+*.swp
