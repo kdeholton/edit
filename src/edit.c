@@ -3,12 +3,14 @@
 // Private Variables
 static char *original;          // This buffer is read-only
 static char *new;               // This buffer is append-only
-static span_t *head_sentinel;
-static span_t *tail_sentinel;
+static node_t *head_sentinel;
+static node_t *tail_sentinel;
 static uint8_t cursor_x;
 static uint8_t cursor_y;
-EditorMode mode;
+static EditorMode mode;
 static uint32_t top_line;
+static node_t *top_line_node;
+static node_t *current_line_node;
 
 void printUsage() {
   printf("Usage: edit <filename>\n");
@@ -32,39 +34,21 @@ ErrorCode readFile(char* filename) {
     return k_file_open_error;
   }
 
-	/* Go to the end of the file. */
-	if (fseek(fp, 0L, SEEK_END) == 0) {
-		/* Get the size of the file. */
-		long bufsize = ftell(fp);
-		if (bufsize == -1) {
-      return k_file_error;
-    }
+  char *line = NULL;
+  size_t len = 0;
+  node_t *curr = head_sentinel;
+  node_t *new;
+  while (getline(&line, &len, fp) != -1) {
+    new = malloc(sizeof(node_t));
+    set_data(new, line);
+    insert_after(new, curr);
+    curr = new;
+    line = NULL;
+  }
 
-		/* Allocate our buffer to that size. */
-    // TODO Size limiting for large files
-    // To start: max of this and some constant?
-		original = malloc(sizeof(char) * (bufsize + 1));
-    if (original == NULL) {
-      // Can't allocate that large
-      fclose(fp);
-      return k_out_of_memory;
-    }
+  top_line_node = head_sentinel->next;
+  current_line_node = head_sentinel->next;
 
-		/* Go back to the start of the file. */
-		if (fseek(fp, 0L, SEEK_SET) != 0) {
-      fclose(fp);
-      return k_file_error;
-    }
-
-		/* Read the entire file into memory. */
-		size_t newLen = fread(original, sizeof(char), bufsize, fp);
-		if ( ferror( fp ) != 0 ) {
-      fclose(fp);
-      return k_file_error;
-		} else {
-      original[newLen++] = '\0'; /* Just to be safe. */
-		}
-	}
 	fclose(fp);
   return k_ok;
 }
@@ -83,22 +67,59 @@ ErrorCode ncurses_init() {
   return k_ok;
 }
 
+ErrorCode update_status_bar() {
+  char *mode_str;
+  switch (mode) {
+    case command_mode:
+    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %s";
+    break;
+  case insert_mode:
+    mode_str = "INSERT MODE";
+    break;
+  }
+
+  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, current_line_node->line);
+  move(cursor_y, cursor_x);
+
+  return k_ok;
+}
+
+ErrorCode update_screen() {
+  int y;
+  node_t *node = top_line_node;
+  for (y = 0; y < LINES-1; y++) {
+    if (node != tail_sentinel) {
+      mvprintw(y, 0, node->line);
+      node = node->next;
+    } else {
+      mvprintw(y, 0, "");
+    }
+  }
+  update_status_bar();
+  refresh();
+  move(cursor_y, cursor_x);
+  return k_ok;
+}
+
 ErrorCode scroll_up() {
   // TODO
   if (top_line == 0) {
     return k_ok;
   }
-  scrollok(stdscr, true); // Enable scrolling
-  scrl(-1);
   top_line--;
+  top_line_node = top_line_node->prev;
+  current_line_node = current_line_node->prev;
   return k_ok;
 }
 
 ErrorCode scroll_down() {
   // TODO
-  scrollok(stdscr, true); // Enable scrolling
-  scrl(1);
+  if (last_node(current_line_node)) {
+    return k_ok;
+  }
   top_line++;
+  top_line_node = top_line_node->next;
+  current_line_node = current_line_node->next;
   return k_ok;
 }
 
@@ -116,13 +137,15 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
   if (y == -1) {
     if (cursor_y > 0) {
       cursor_y -= 1;
+      current_line_node = current_line_node->prev;
     } else if (cursor_y == 0) {
       scroll_up();
     }
   } else if (y == 1) {
-    if (cursor_y < LINES-1) {
+    if (cursor_y < LINES-1-1) {
       cursor_y += 1;
-    } else if (cursor_y == LINES-1) {
+      current_line_node = current_line_node->next;
+    } else if (cursor_y == LINES-1-1) {
       scroll_down();
     }
   }
@@ -136,7 +159,7 @@ ErrorCode enter_insert_mode() {
 }
 
 ErrorCode ncurses_process_input() {
-  move(cursor_y, cursor_x);
+  update_screen();
   wchar_t c = '\0';
   while (c != 'q') {
     c = getch();
@@ -145,6 +168,8 @@ ErrorCode ncurses_process_input() {
       continue;
     }
     switch(c) {
+      case 'c':
+        break;
       case 'i': // Enter insert mode
         enter_insert_mode();
       case KEY_LEFT:
@@ -166,20 +191,12 @@ ErrorCode ncurses_process_input() {
       default:
         break;
     }
-    move(cursor_y, cursor_x);
-    refresh();
+    update_screen();
   }
   return k_ok;
 }
 
 ErrorCode init(char *filename) {
-  // Read the file in to memory
-  ErrorCode status = readFile(filename);
-  if (status != k_ok) {
-    printf("Something went wrong reading the file: %d\n", status);
-    return status;
-  }
-
   // Create a new buffer, for changes made
   new = calloc((MAX_BUF_LEN + 0), sizeof(char));
   if (new == NULL) {
@@ -188,10 +205,17 @@ ErrorCode init(char *filename) {
   new[MAX_BUF_LEN] = '\0';
 
   // Initialize the linked list
-  status = initialize(&head_sentinel, &tail_sentinel);
+  ErrorCode status = initialize(&head_sentinel, &tail_sentinel);
   if (status != k_ok) {
     // Couldn't create new linked list!
     printf("%s\n", "Couldn't create new list");
+    return status;
+  }
+
+  // Read the file in to memory
+  status = readFile(filename);
+  if (status != k_ok) {
+    printf("Something went wrong reading the file: %d\n", status);
     return status;
   }
 
