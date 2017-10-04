@@ -83,14 +83,14 @@ ErrorCode update_status_bar() {
   char *mode_str;
   switch (mode) {
     case command_mode:
-    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %p";
+    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %d";
     break;
   case insert_mode:
     mode_str = "INSERT MODE";
     break;
   }
 
-  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, (void*)current_line_node);
+  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, current_line_index);
   move(cursor_y, cursor_x);
   refresh();
 
@@ -145,12 +145,13 @@ ErrorCode scroll_down() {
 ErrorCode update_cursor(int8_t x, int8_t y) {
   if (x == -1) {
     if (cursor_x > 0) {
+      current_line_index--;
       cursor_x -= 1;
     } else if (cursor_x == 0) {
       if (NUM_LINES(current_line_node) > 1 && current_line_index > 0) {
         // Gotta pop back up to the previous screen line!
         cursor_x = COLS-1;
-        update_cursor(0, -1);
+        cursor_y -= 1;
       }
     }
   } else if (x == 1) {
@@ -164,7 +165,7 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
       if (NUM_LINES(current_line_node) > 1) {
         // Need to drop down to the next screen line!
         cursor_x = 0;
-        update_cursor(0, 1);
+        cursor_y += 1;
       }
     }
   }
@@ -176,6 +177,7 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
         current_line_index -= COLS;
       } else {
         current_line_node = current_line_node->prev;
+        current_line_index = (int)fmin(NUM_CHARS(current_line_node), current_line_index);
       }
     } else if (cursor_y == 0) {
       scroll_up();
@@ -187,6 +189,7 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
         current_line_index = (int)fmin(NUM_CHARS(current_line_node), current_line_index+COLS);
       } else {
         current_line_node = current_line_node->next;
+        current_line_index = (int)fmin(NUM_CHARS(current_line_node), current_line_index);
       }
     } else if (cursor_y == LINES-1-1) {
       scroll_down();
