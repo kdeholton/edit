@@ -1,3 +1,4 @@
+// TODO refactor!
 #include "edit.h"
 
 // Private Variables
@@ -11,9 +12,15 @@ static EditorMode mode;
 static uint32_t top_line;
 static node_t *top_line_node;
 static node_t *current_line_node;
+static uint8_t current_line_index;
 
 void printUsage() {
   printf("Usage: edit <filename>\n");
+}
+
+void signal_registration() {
+  // TODO be careful with what is called here
+  signal(SIGWINCH, handle_resize);
 }
 
 ErrorCode checkArgs(int argc, char **argv, char **filename) {
@@ -63,23 +70,29 @@ ErrorCode ncurses_init() {
 
   mode = command_mode;
   top_line = 0;
+  current_line_index = 0;
 
   return k_ok;
+}
+
+void handle_resize(int i) {
+ update_screen(); 
 }
 
 ErrorCode update_status_bar() {
   char *mode_str;
   switch (mode) {
     case command_mode:
-    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %s";
+    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %d";
     break;
   case insert_mode:
     mode_str = "INSERT MODE";
     break;
   }
 
-  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, current_line_node->line);
+  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, NUM_LINES(current_line_node));
   move(cursor_y, cursor_x);
+  refresh();
 
   return k_ok;
 }
@@ -87,9 +100,15 @@ ErrorCode update_status_bar() {
 ErrorCode update_screen() {
   int y;
   node_t *node = top_line_node;
-  for (y = 0; y < LINES-1; y++) {
+  for (y = 0; y < LINES-1;) {
     if (node != tail_sentinel) {
-      mvprintw(y, 0, node->line);
+      int num_lines = NUM_LINES(node);
+      int i = 0;
+      while(i < num_lines) {
+        mvprintw(y, 0, node->line+(COLS*i));
+        i++;
+        y++;
+      }
       node = node->next;
     } else {
       mvprintw(y, 0, "");
@@ -127,24 +146,42 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
   if (x == -1) {
     if (cursor_x > 0) {
       cursor_x -= 1;
+    } else if (cursor_x == 0) {
+      if (NUM_LINES(current_line_node) > 1 && current_line_index > 0) {
+        // Gotta pop back up to the previous screen line!
+        cursor_x = COLS-1;
+        update_cursor(0, -1);
+      }
     }
   } else if (x == 1) {
     if (cursor_x < COLS-1) {
       cursor_x += 1;
+    } else if (cursor_x == COLS-1) {
+      if (NUM_LINES(current_line_node) > 1) {
+        // Need to drop down to the next screen line!
+        cursor_x = 0;
+        update_cursor(0, 1);
+      }
     }
   }
 
   if (y == -1) {
     if (cursor_y > 0) {
       cursor_y -= 1;
-      current_line_node = current_line_node->prev;
+      if (NUM_LINES(current_line_node) > 0 && current_line_index >= COLS) {
+      } else {
+        current_line_node = current_line_node->prev;
+      }
     } else if (cursor_y == 0) {
       scroll_up();
     }
   } else if (y == 1) {
     if (cursor_y < LINES-1-1) {
       cursor_y += 1;
-      current_line_node = current_line_node->next;
+      if (NUM_LINES(current_line_node) > 0 && current_line_index < (COLS * (NUM_LINES(current_line_node)-1))) {
+      } else {
+        current_line_node = current_line_node->next;
+      }
     } else if (cursor_y == LINES-1-1) {
       scroll_down();
     }
