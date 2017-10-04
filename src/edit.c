@@ -83,14 +83,14 @@ ErrorCode update_status_bar() {
   char *mode_str;
   switch (mode) {
     case command_mode:
-    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %d";
+    mode_str = "COMMAND MODE     (%d, %d)     line_top: %d        node: %p     curr Line: %p";
     break;
   case insert_mode:
     mode_str = "INSERT MODE";
     break;
   }
 
-  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, NUM_LINES(current_line_node));
+  mvprintw(LINES-1, 0, mode_str, cursor_x, cursor_y, top_line, (void*)top_line_node, (void*)current_line_node);
   move(cursor_y, cursor_x);
   refresh();
 
@@ -155,7 +155,11 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
     }
   } else if (x == 1) {
     if (cursor_x < COLS-1) {
-      cursor_x += 1;
+      if (current_line_index > NUM_CHARS(current_line_node)) {
+      } else {
+        cursor_x += 1;
+        current_line_index++;
+      }
     } else if (cursor_x == COLS-1) {
       if (NUM_LINES(current_line_node) > 1) {
         // Need to drop down to the next screen line!
@@ -169,6 +173,7 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
     if (cursor_y > 0) {
       cursor_y -= 1;
       if (NUM_LINES(current_line_node) > 0 && current_line_index >= COLS) {
+        current_line_index -= COLS;
       } else {
         current_line_node = current_line_node->prev;
       }
@@ -178,7 +183,8 @@ ErrorCode update_cursor(int8_t x, int8_t y) {
   } else if (y == 1) {
     if (cursor_y < LINES-1-1) {
       cursor_y += 1;
-      if (NUM_LINES(current_line_node) > 0 && current_line_index < (COLS * (NUM_LINES(current_line_node)-1))) {
+      if (NUM_LINES(current_line_node) > 1 && current_line_index < (COLS * (NUM_LINES(current_line_node)-1))) {
+        current_line_index = (int)fmin(NUM_CHARS(current_line_node), current_line_index+COLS);
       } else {
         current_line_node = current_line_node->next;
       }
